@@ -33,8 +33,8 @@ class EventLoop:
         self._running = True
 
         while self._running:
-            for key, _ in self._selector.select():
-                key.data()
+            for key, event in self._selector.select():
+                key.data(key.fileobj, event)
 
     def stop(self):
         self._running = False
@@ -43,7 +43,7 @@ class EventLoop:
         self._selector.register(
             fd,
             selectors.EVENT_READ,
-            lambda: callback(*args),
+            lambda _, __: callback(*args),
         )
 
     def call_later(self, delay: int, callback: Callable, *args):
@@ -51,25 +51,25 @@ class EventLoop:
         timerfd.settime(fd, 0, delay, 0)
         self.add_reader(fd, callback, *args)
 
-    def add_signal_handler(self, signalnum: int, handler: Callable, *args):
-        self._sig_handlers[signalnum] = lambda: handler(*args)
+    def add_signal_handler(self, signum: int, handler: Callable, *args):
+        self._sig_handlers[signum] = lambda: handler(*args)
 
         self_pipe, created = SelfPipe.get_or_create(namespace='signal')
         if created:
 
             def handle_signals():
                 for sig in self._sig_pending:
-                    self.self._sig_handlers[sig]()
-                    self._sig_pending.remove(sig)
+                    self._sig_handlers[sig]()
+                self._sig_pending.clear()
 
             self._sig_wakeup_fd = self_pipe.write_end
             self.add_reader(self_pipe.read_end, handle_signals)
 
-            def _handler():
-                self._sig_pending.add(signalnum)
+            def _handler(signum, frame):
+                self._sig_pending.add(signum)
                 os.write(self._sig_wakeup_fd, b'.')
 
-            signal._o_signal(signalnum, _handler)
+            signal._o_signal(signum, _handler)
 
     def switch(self):
         if not self.is_running():
