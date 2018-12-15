@@ -1,14 +1,16 @@
 import os
 import signal
+import asyncio
 import timerfd
 import greenlet
 import selectors
 from typing import Callable
 
+from . import utils
 from .self_pipe import SelfPipe
 
 
-class EventLoop:
+class EventLoop(asyncio.AbstractEventLoop):
     _instance = None
 
     @classmethod
@@ -58,9 +60,10 @@ class EventLoop:
         if created:
 
             def handle_signals():
-                for sig in self._sig_pending:
-                    self._sig_handlers[sig]()
-                self._sig_pending.clear()
+                with utils.block_signals(self._sig_pending):
+                    for sig in self._sig_pending:
+                        self._sig_handlers[sig]()
+                    self._sig_pending.clear()
 
             self._sig_wakeup_fd = self_pipe.write_end
             self.add_reader(self_pipe.read_end, handle_signals)
