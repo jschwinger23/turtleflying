@@ -1,32 +1,23 @@
-import os
-import signal
 import asyncio
-import timerfd
-import greenlet
 import selectors
 from typing import Callable
 
-from . import utils
-from .self_pipe import SelfPipe
+from .coroutine import Coroutine
 
 
 class EventLoop(asyncio.AbstractEventLoop):
     _instance = None
 
     @classmethod
-    def instance(cls):
+    def get_event_loop(cls):
         if not cls._instance:
             cls._instance = cls()
         return cls._instance
 
     def __init__(self):
         self._running = False
-        self._greenlet: greenlet.greenlet = None
+        self._coroutine: Coroutine = None
         self._selector = selectors.DefaultSelector()
-
-        self._sig_handlers = {}
-        self._sig_pending = set()  # ordering for CPython3.6+
-        self._sig_wakeup_fd: int = None
 
     def is_running(self):
         return self._running
@@ -41,40 +32,33 @@ class EventLoop(asyncio.AbstractEventLoop):
     def stop(self):
         self._running = False
 
-    def add_reader(self, fd, callback, *args):
+    def add_reader(self, fd: int, callback: Callable, *args):
         self._selector.register(
             fd,
             selectors.EVENT_READ,
-            lambda _, __: callback(*args),
+            lambda *_: callback(*args),
         )
 
-    def call_later(self, delay: int, callback: Callable, *args):
-        fd = timerfd.create(timerfd.CLOCK_REALTIME, 0)
-        timerfd.settime(fd, 0, delay, 0)
-        self.add_reader(fd, callback, *args)
+    def add_writer(self, fd: int, callback: Callable, *args):
+        self._selector.register(
+            fd,
+            selectors.EVENT_WRITE,
+            lambda *_: callback(*args),
+        )
 
-    def add_signal_handler(self, signum: int, handler: Callable, *args):
-        self._sig_handlers[signum] = lambda: handler(*args)
-
-        self_pipe, created = SelfPipe.get_or_create(namespace='signal')
-        if created:
-
-            def handle_signals():
-                with utils.block_signals(self._sig_pending):
-                    for sig in self._sig_pending:
-                        self._sig_handlers[sig]()
-                    self._sig_pending.clear()
-
-            self._sig_wakeup_fd = self_pipe.write_end
-            self.add_reader(self_pipe.read_end, handle_signals)
-
-            def _handler(signum, frame):
-                self._sig_pending.add(signum)
-                os.write(self._sig_wakeup_fd, b'.')
-
-            signal._o_signal(signum, _handler)
-
-    def switch(self):
+    def get_coroutine(self) -> Coroutine:
         if not self.is_running():
-            self.greenlet = greenlet.greenlet(self.run_forever)
-        self.greenlet.switch()
+            self._coroutine = Coroutine(self.run_forever)
+
+        return self._coroutine
+
+
+def coroutine_yield():
+    event_loop = EventLoop.get_event_loop()
+    coroutine = event_loop.get_coroutine()
+    coroutine.resume()
+
+
+def coroutine_resume():
+    coroutine = Coroutine.current()
+    return coroutine.resume
