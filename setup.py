@@ -15,6 +15,6 @@ setup(
         'pytimerfd>=1.2.0,<2.0.0',
         'greenlet>=0.4.15,<1.0.0',
     ],
-    python_requires='>=3.6.1',
+    python_requires='>=3.7.1',
     platform='Linux',
 )
