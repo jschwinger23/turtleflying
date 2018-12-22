@@ -5,11 +5,11 @@ import time
 import signal
 
 
-def int_handler(*_, **__):
+def int_handler(_, __):
     print('sigint!')
 
 
 signal.signal(signal.SIGINT, int_handler)
 
-time.sleep(10)
+time.sleep(3)
 print('resume')
