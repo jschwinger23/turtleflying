@@ -1,6 +1,7 @@
 from .utils import get_timerfd
 from .event_loop import EventLoop
-from .event_loop import coroutine_yield, coroutine_resume
+
+from .coroutine import Coroutine
 
 
 def wait(
@@ -20,4 +21,22 @@ def wait(
     else:
         raise ValueError('nothing to wait')
 
+    fd_manager.add(on_readable or on_writable)
+
     coroutine_yield()
+
+
+def coroutine_yield():
+    global EVENT_LOOP_COROUTINE
+    if not EVENT_LOOP_COROUTINE:
+        event_loop = EventLoop.get_event_loop()
+        EVENT_LOOP_COROUTINE = Coroutine(event_loop.run_forever)
+    EVENT_LOOP_COROUTINE.resume()
+
+
+def coroutine_resume():
+    coroutine = Coroutine.current()
+    def _resume(fd, event):
+        event_loop.unregister(fd)
+        coroutine.resume()
+    return _resume
