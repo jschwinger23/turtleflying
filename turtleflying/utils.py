@@ -1,9 +1,8 @@
 import os
-import inspect
 import timerfd
-from typing import Callable
-from functools import partial
-from collections import defaultdict
+
+from .time import sleep
+from .coroutine import Coroutine
 
 
 def get_timerfd(seconds: int):
@@ -26,40 +25,20 @@ class SelfPipe:
         return self.pipe_pair[0]
 
 
-def multipledispatch(func):
-    dispatcher.register(func)
-    return dispatcher
-    return partial(dispatcher.dispatch, func.__name__)
+class Timeout:
 
+    def __init__(self, timeout: int):
+        self.timeout = timeout
+        self._coroutine: Coroutine = None
 
-class Dispatcher:
+    def __enter__(self):
+        self._coroutine = Coroutine(target=self.raise_after_timeout)
+        self._coroutine.start()
 
-    def __init__(self):
-        self.router = defaultdict(dict)
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self._coroutine.kill()
+        return True
 
-    def register(self, func: Callable):
-        func_name = func.__name__
-        members = inspect.getmembers(func)
-        annotations = next(
-            value for name, value in members if name == '__annotations__'
-        )
-        param_types = tuple(annotations.values())
-        self.router[func_name][param_types] = func
-
-    def dispatch(self, func_name, *args):
-        for param_types, func in self.router[func_name].items():
-            for arg, param_t in zip(args, param_types):
-                if not isinstance(arg, param_t):
-                    break
-            else:
-                return func
-        raise ValueError('unsupported arguments')
-
-    def __set_name__(self, owner, name):
-        self.name = name
-
-    def __get__(self, instance, owner):
-        return lambda *args: self.dispatch(self.name, *args)(instance, *args)
-
-
-dispatcher = Dispatcher()
+    def raise_after_timeout(self):
+        sleep(self.timeout)
+        raise TimeoutError
