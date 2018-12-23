@@ -1,4 +1,4 @@
-def monkey_patch(signal=True, sleep=True):
+def monkey_patch(signal=True, sleep=True, socket=True):
     if signal:
         import signal
         from .signal import green_signal
@@ -8,3 +8,8 @@ def monkey_patch(signal=True, sleep=True):
         import time
         from .sleep import green_sleep
         time._o_sleep, time.sleep = time.sleep, green_sleep
+
+    if socket:
+        import socket
+        from .socket import get_socket
+        socket._o_socket, socket.socket = socket.socket, get_socket
