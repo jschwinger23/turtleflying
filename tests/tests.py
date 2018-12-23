@@ -11,5 +11,5 @@ def int_handler(_, __):
 
 signal.signal(signal.SIGINT, int_handler)
 
-time.sleep(3)
+time.sleep(1)
 print('resume')
