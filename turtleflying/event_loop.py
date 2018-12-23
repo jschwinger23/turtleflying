@@ -2,7 +2,8 @@ import asyncio
 import selectors
 from typing import Callable
 
-from .coroutine import Coroutine
+FD = int
+EVENT = int
 
 
 class EventLoop(asyncio.AbstractEventLoop):
@@ -16,7 +17,6 @@ class EventLoop(asyncio.AbstractEventLoop):
 
     def __init__(self):
         self._running = False
-        self._coroutine: Coroutine = None
         self._selector = selectors.DefaultSelector()
 
     def is_running(self):
@@ -32,33 +32,27 @@ class EventLoop(asyncio.AbstractEventLoop):
     def stop(self):
         self._running = False
 
-    def add_reader(self, fd: int, callback: Callable, *args):
+    def add_reader(self, fd: FD, callback: Callable[[FD, EVENT]]):
         self._selector.register(
             fd,
             selectors.EVENT_READ,
-            lambda *_: callback(*args),
+            callback,
         )
 
-    def add_writer(self, fd: int, callback: Callable, *args):
+    def add_writer(self, fd: FD, callback: Callable[[FD, EVENT]]):
         self._selector.register(
             fd,
             selectors.EVENT_WRITE,
-            lambda *_: callback(*args),
+            callback,
         )
 
-    def get_coroutine(self) -> Coroutine:
-        if not self.is_running():
-            self._coroutine = Coroutine(self.run_forever)
+    def remove_reader(self, fd: FD) -> bool:
+        try:
+            self._selector.get_key(fd)
+        except KeyError:
+            return False
+        else:
+            self._selector.unregister(fd)
+            return True
 
-        return self._coroutine
-
-
-def coroutine_yield():
-    event_loop = EventLoop.get_event_loop()
-    coroutine = event_loop.get_coroutine()
-    coroutine.resume()
-
-
-def coroutine_resume():
-    coroutine = Coroutine.current()
-    return coroutine.resume
+    remove_writer = remove_reader
